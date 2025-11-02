@@ -8,7 +8,8 @@ from fpdf import FPDF
 import tempfile
 import os
 import importlib.util
-import matplotlib.pyplot as plt  # added for matplotlib fallback
+import matplotlib.pyplot as plt
+import numpy as np
 
 # Custom modules
 from smart_summary import get_Summary
@@ -139,7 +140,6 @@ if data is not None:
                     target_col = reg['target_variable']
                     feature_col = reg['feature_variable']
 
-                    # Safe regression (no crash if statsmodels not installed)
                     has_statsmodels = importlib.util.find_spec("statsmodels") is not None
                     if has_statsmodels:
                         reg_fig = px.scatter(df, x=feature_col, y=target_col,
@@ -156,7 +156,7 @@ if data is not None:
                 except Exception as e:
                     st.error(f"Regression plot error: {e}")
 
-          #PDF GENERATE
+          # PDF GENERATE
             try:
                 pdf = FPDF()
                 pdf.set_auto_page_break(auto=True, margin=15)
@@ -197,58 +197,97 @@ if data is not None:
                     write_section("Data Quality Issues", data_quality)
                     write_section("Recommendations", recommendations)
 
-                    # Charts using matplotlib or Plotly-note fallback
+                    # Charts Section (convert Plotly to Matplotlib for PDF)
                     pdf.set_font("DejaVu", "B", 16)
                     pdf.cell(0, 10, "Generated Charts", ln=True)
                     pdf.ln(5)
 
                     for i, code in enumerate(chart_codes):
                         try:
-                            scope_dict = {"df": df, "px": px, "plt": plt}
-                            exec(code, scope_dict)
+                            # Detect if Plotly code and convert
+                            if "px." in code:
+                                if "bar" in code:
+                                    chart_type = "bar"
+                                elif "line" in code:
+                                    chart_type = "line"
+                                elif "scatter" in code:
+                                    chart_type = "scatter"
+                                elif "pie" in code:
+                                    chart_type = "pie"
+                                else:
+                                    chart_type = "bar"
 
-                            # If user code created a Plotly figure named 'fig'
-                            if "fig" in scope_dict:
-                                pdf.multi_cell(0, 7, f"Chart {i+1}: See interactive chart in app (Plotly)")
-                                pdf.ln(5)
-                                try:
-                                    plt.clf()
-                                except Exception:
-                                    pass
-                                continue
+                                x_col, y_col = None, None
+                                if "x=" in code:
+                                    x_col = code.split("x=")[1].split(",")[0].replace('"', '').replace("'", "").strip()
+                                if "y=" in code:
+                                    y_col = code.split("y=")[1].split(",")[0].replace('"', '').replace("'", "").strip()
 
-                            # Otherwise assume matplotlib
-                            fig = plt.gcf()
-                            if fig and fig.axes:
-                                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                                    fig.savefig(tmp.name, bbox_inches='tight')
-                                    pdf.image(tmp.name, w=170)
-                                    os.remove(tmp.name)
-                                plt.close(fig)
-                                pdf.ln(10)
+                                fig, ax = plt.subplots(figsize=(6, 4))
+                                if chart_type == "bar" and x_col and y_col:
+                                    ax.bar(df[x_col], df[y_col], color="#2a9d8f")
+                                elif chart_type == "line" and x_col and y_col:
+                                    ax.plot(df[x_col], df[y_col], color="#264653", linewidth=2)
+                                elif chart_type == "scatter" and x_col and y_col:
+                                    ax.scatter(df[x_col], df[y_col], color="#e76f51")
+                                elif chart_type == "pie" and y_col:
+                                    vals = df[y_col].value_counts()
+                                    ax.pie(vals, labels=vals.index, autopct='%1.1f%%')
+                                else:
+                                    ax.text(0.5, 0.5, "Unsupported Plotly chart", ha='center', va='center', fontsize=12)
+                                ax.set_title(f"Chart {i+1}: Auto-converted from Plotly")
+                                plt.xticks(rotation=30, ha='right')
+
                             else:
-                                pdf.multi_cell(0, 7, f"Chart {i+1}: No chart produced by code.")
-                                pdf.ln(5)
+                                # Already Matplotlib chart
+                                fig, ax = plt.subplots(figsize=(6, 4))
+                                scope_dict = {"df": df, "plt": plt, "ax": ax}
+                                exec(code, scope_dict)
+
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                                fig.savefig(tmp.name, bbox_inches='tight')
+                                pdf.image(tmp.name, w=170)
+                                os.remove(tmp.name)
+                            plt.close(fig)
+                            pdf.ln(10)
 
                         except Exception as e:
+                            pdf.set_font("DejaVu", "", 12)
                             pdf.multi_cell(0, 7, f"Chart {i+1} error: {e}")
                             pdf.ln(5)
 
-                    # Regression Plot
+                    # Regression Plot (Matplotlib only)
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
 
-                        has_statsmodels = importlib.util.find_spec("statsmodels") is not None
-                        if has_statsmodels:
-                            reg_fig = px.scatter(df, x=feature_col, y=target_col,
-                                                 trendline='ols', trendline_color_override='red')
-                            pdf.multi_cell(0, 7, "Regression plot: See interactive version in app.")
-                        else:
-                            reg_fig = px.scatter(df, x=feature_col, y=target_col)
-                            pdf.multi_cell(0, 7, "Regression plot: See interactive version in app.")
+                        fig, ax = plt.subplots(figsize=(6, 4))
+                        ax.scatter(df[feature_col], df[target_col], color='#2a9d8f', label='Data Points')
+
+                        if df[feature_col].dtype != 'object' and df[target_col].dtype != 'object':
+                            try:
+                                m, b = np.polyfit(df[feature_col], df[target_col], 1)
+                                ax.plot(df[feature_col], m * df[feature_col] + b, color='#e76f51', label='Trendline')
+                            except Exception:
+                                pass
+
+                        ax.set_title(f"Regression: {feature_col} vs {target_col}")
+                        ax.set_xlabel(feature_col)
+                        ax.set_ylabel(target_col)
+                        ax.legend()
+
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                            fig.savefig(tmp.name, bbox_inches='tight')
+                            pdf.image(tmp.name, w=170)
+                            os.remove(tmp.name)
+
+                        plt.close(fig)
+                        pdf.ln(10)
+
                     except Exception as e:
+                        pdf.set_font("DejaVu", "", 12)
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
+                        pdf.ln(5)
 
                     # Export PDF safely
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
