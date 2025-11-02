@@ -9,6 +9,7 @@ import tempfile
 import os
 import importlib.util
 import matplotlib.pyplot as plt
+import plotly.express as px
 
 # Custom modules
 from smart_summary import get_Summary
