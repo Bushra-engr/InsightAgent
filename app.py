@@ -13,12 +13,7 @@ import importlib.util
 from smart_summary import get_Summary
 from prompt import full_prompt
 
-# ✅ Fix: correct environment variable name for Kaleido
-os.environ["Kaleido_Chrome_Path"] = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-
-
-#  PAGE SETUP & STYLE
-
+# PAGE SETUP & STYLE
 st.set_page_config(page_title="Insight Agent", page_icon="🤖", layout="wide")
 
 st.markdown("""
@@ -51,25 +46,19 @@ div.stButton > button:first-child:hover {
 """, unsafe_allow_html=True)
 
 
-#  API CONFIG
-
+# API CONFIG
 API_KEY = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("models/gemini-2.5-pro")
 
-
-#  APP HEADER
-
+# APP HEADER
 st.title("INSIGHT AGENT 🤖📊")
 st.header("Turn your Data into a Story")
 
-
-#  DATA UPLOAD
-
+# DATA UPLOAD
 data = st.file_uploader("Upload your dataset (Max 4000 rows)", type=["csv", "xls", "xlsx"])
 
 if data is not None:
-    # Read file
     if data.name.endswith(".csv"):
         df = pd.read_csv(data)
     else:
@@ -79,14 +68,11 @@ if data is not None:
         st.success("✅ File uploaded successfully!")
         st.dataframe(df.head(5), use_container_width=True)
 
-        # Smart Summary
         smart_summary = get_Summary(df)
 
-        # Role and Tone
         role = st.pills("Select your Role", ["CEO", "Investor", "Sales Manager", "Employee", "Teacher", "Student", "Patient", "Doctor"])
         tone = st.pills("Select your Tone", ["Formal", "Casual", "Conversational", "Friendly", "Professional"])
 
-        # Analyze button
         if st.button("📊 Analyze Your Data", use_container_width=True):
             with st.spinner("Agent is analyzing your data..."):
                 prompt = full_prompt(tone, role, smart_summary)
@@ -94,7 +80,6 @@ if data is not None:
                 clean_response = response.text.strip('```json\n').strip('\n```')
                 st.toast('✨ Analysis Finished!')
 
-                # Parse AI output
                 agent_report = json.loads(clean_response)
                 executive_summary = agent_report["executive_summary"]
                 key_insights = agent_report["key_insights"]
@@ -103,9 +88,6 @@ if data is not None:
                 chart_codes = agent_report["plot_codes"]
                 reg = agent_report["regression_suggestion"]
 
-            
-            #  TABS VIEW
-           
             tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
                 ["Smart Summary", "Key Insights", "Data Quality", "Recommendations", "Charts", "Regression"]
             )
@@ -142,8 +124,6 @@ if data is not None:
                 try:
                     target_col = reg['target_variable']
                     feature_col = reg['feature_variable']
-
-                    # Safe regression (no crash if statsmodels not installed)
                     has_statsmodels = importlib.util.find_spec("statsmodels") is not None
                     if has_statsmodels:
                         reg_fig = px.scatter(df, x=feature_col, y=target_col,
@@ -155,26 +135,21 @@ if data is not None:
                             text="OLS disabled (statsmodels missing)",
                             xref="paper", yref="paper", showarrow=False, yshift=20
                         )
-
                     st.plotly_chart(reg_fig, use_container_width=True)
                 except Exception as e:
                     st.error(f"Regression plot error: {e}")
 
-          #PDF GENERATE
+            # PDF GENERATE
             try:
                 pdf = FPDF()
                 pdf.set_auto_page_break(auto=True, margin=15)
                 pdf.set_margins(15, 15, 15)
                 pdf.add_page()
 
-                # Font path setup (safe method)
                 base_path = os.path.join(os.getcwd(), "dejavu-fonts-ttf-2.37", "ttf")
                 font_path_regular = os.path.join(base_path, "DejaVuSans.ttf")
                 font_path_bold = os.path.join(base_path, "DejaVuSans-Bold.ttf")
 
-                st.write(f"🔍 Checking font paths:\nRegular: {font_path_regular}\nBold: {font_path_bold}")
-
-                # Check existence
                 if not (os.path.exists(font_path_regular) and os.path.exists(font_path_bold)):
                     st.error("⚠️ Font files missing! Make sure both DejaVuSans.ttf and DejaVuSans-Bold.ttf exist in your ttf folder.")
                 else:
@@ -184,7 +159,6 @@ if data is not None:
                     pdf.cell(0, 10, "InsightAgent AI Report", ln=True, align='C')
                     pdf.ln(10)
 
-                    # Helper to write sections
                     def write_section(title, content):
                         pdf.set_font("DejaVu", "B", 16)
                         pdf.cell(0, 10, title, ln=True)
@@ -198,13 +172,11 @@ if data is not None:
                                 pdf.ln(1)
                         pdf.ln(6)
 
-                    # Sections
                     write_section("Executive Summary", executive_summary)
                     write_section("Key Insights", key_insights)
                     write_section("Data Quality Issues", data_quality)
                     write_section("Recommendations", recommendations)
 
-                    # Charts (safe Kaleido handling)
                     pdf.set_font("DejaVu", "B", 16)
                     pdf.cell(0, 10, "Generated Charts", ln=True)
                     pdf.ln(5)
@@ -214,50 +186,54 @@ if data is not None:
                             scope_dict = {"df": df, "px": px}
                             exec(code, scope_dict)
                             fig = scope_dict["fig"]
-
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                                 try:
                                     fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
-                                    img_path = tmp.name
-                                    pdf.set_font("DejaVu", "B", 12)
-                                    pdf.cell(0, 8, f"Chart {i+1}", ln=True)
-                                    pdf.image(img_path, w=170)
-                                    pdf.ln(10)
-                                    os.remove(img_path)
-                                except Exception as inner_e:
-                                    pdf.multi_cell(0, 7, f"Chart {i+1} skipped (export error: {inner_e})")
-                                    pdf.ln(5)
+                                except Exception:
+                                    try:
+                                        fig.write_html(tmp.name + ".html")
+                                        fig.write_image(tmp.name, format='png', engine='orca')
+                                    except Exception as alt_e:
+                                        pdf.multi_cell(0, 7, f"Chart {i+1} skipped (no image export available: {alt_e})")
+                                        continue
+                                img_path = tmp.name
+                            pdf.set_font("DejaVu", "B", 12)
+                            pdf.cell(0, 8, f"Chart {i+1}", ln=True)
+                            pdf.image(img_path, w=170)
+                            pdf.ln(10)
+                            os.remove(img_path)
                         except Exception as e:
-                            pdf.multi_cell(0, 7, f"Chart {i+1} generation error: {e}")
+                            pdf.multi_cell(0, 7, f"Chart {i+1} error: {e}")
                             pdf.ln(5)
 
-                    # Regression Plot (safe handling)
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
-
                         has_statsmodels = importlib.util.find_spec("statsmodels") is not None
                         if has_statsmodels:
-                            reg_fig = px.scatter(df, x=feature_col, y=target_col,
-                                                 trendline='ols', trendline_color_override='red')
+                            reg_fig = px.scatter(df, x=feature_col, y=target_col, trendline='ols',
+                                                 trendline_color_override='red')
                         else:
                             reg_fig = px.scatter(df, x=feature_col, y=target_col)
                             reg_fig.update_traces(marker=dict(color='blue'))
-
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                             try:
                                 reg_fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
-                                reg_img = tmp.name
-                                pdf.set_font("DejaVu", "B", 16)
-                                pdf.cell(0, 10, "Regression Analysis", ln=True)
-                                pdf.image(reg_img, w=170)
-                                os.remove(reg_img)
-                            except Exception as inner_e:
-                                pdf.multi_cell(0, 7, f"Regression plot skipped (export error: {inner_e})")
+                            except Exception:
+                                try:
+                                    reg_fig.write_html(tmp.name + ".html")
+                                    reg_fig.write_image(tmp.name, format='png', engine='orca')
+                                except Exception as alt_e:
+                                    pdf.multi_cell(0, 7, f"Regression skipped (export error: {alt_e})")
+                                    continue
+                            reg_img = tmp.name
+                        pdf.set_font("DejaVu", "B", 16)
+                        pdf.cell(0, 10, "Regression Analysis", ln=True)
+                        pdf.image(reg_img, w=170)
+                        os.remove(reg_img)
                     except Exception as e:
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
 
-                    # Export PDF safely
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
                         pdf.output(tmp_pdf.name)
                         tmp_pdf_path = tmp_pdf.name
