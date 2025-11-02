@@ -251,13 +251,21 @@ if data is not None:
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
 
                     # Export PDF safely
-                    pdf_output = bytes(pdf.output(dest='S'))
-                    st.download_button(
-                        label="📄 Download Full Report as PDF",
-                        data=pdf_output,
-                        file_name="InsightAgent_Report.pdf",
-                        mime="application/pdf"
-                    )
+                  # Export PDF safely
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                        pdf.output(tmp_pdf.name)
+                        tmp_pdf_path = tmp_pdf.name
+
+                    with open(tmp_pdf_path, "rb") as f:
+                        pdf_output = f.read()
+
+                        st.download_button(
+                            label="📄 Download Full Report as PDF",
+                            data=pdf_output,
+                            file_name="InsightAgent_Report.pdf",
+                            mime="application/pdf")
+                        os.remove(tmp_pdf_path)
+
 
             except Exception as e:
                 st.error(f"PDF generation error: {e}")
