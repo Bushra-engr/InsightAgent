@@ -13,6 +13,8 @@ import importlib.util
 from smart_summary import get_Summary
 from prompt import full_prompt
 
+os.environ["KALIEDO_CHROME_PATH"] = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+
 
 #  PAGE SETUP & STYLE
 
