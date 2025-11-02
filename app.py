@@ -13,6 +13,7 @@ import importlib.util
 from smart_summary import get_Summary
 from prompt import full_prompt
 
+
 # PAGE SETUP & STYLE
 st.set_page_config(page_title="Insight Agent", page_icon="🤖", layout="wide")
 
@@ -51,9 +52,11 @@ API_KEY = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("models/gemini-2.5-pro")
 
+
 # APP HEADER
 st.title("INSIGHT AGENT 🤖📊")
 st.header("Turn your Data into a Story")
+
 
 # DATA UPLOAD
 data = st.file_uploader("Upload your dataset (Max 4000 rows)", type=["csv", "xls", "xlsx"])
@@ -139,7 +142,7 @@ if data is not None:
                 except Exception as e:
                     st.error(f"Regression plot error: {e}")
 
-            # PDF GENERATE
+            # PDF GENERATION
             try:
                 pdf = FPDF()
                 pdf.set_auto_page_break(auto=True, margin=15)
@@ -181,6 +184,7 @@ if data is not None:
                     pdf.cell(0, 10, "Generated Charts", ln=True)
                     pdf.ln(5)
 
+                    # Export all charts safely
                     for i, code in enumerate(chart_codes):
                         try:
                             scope_dict = {"df": df, "px": px}
@@ -189,23 +193,20 @@ if data is not None:
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                                 try:
                                     fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
-                                except Exception:
-                                    try:
-                                        fig.write_html(tmp.name + ".html")
-                                        fig.write_image(tmp.name, format='png', engine='orca')
-                                    except Exception as alt_e:
-                                        pdf.multi_cell(0, 7, f"Chart {i+1} skipped (no image export available: {alt_e})")
-                                        continue
-                                img_path = tmp.name
-                            pdf.set_font("DejaVu", "B", 12)
-                            pdf.cell(0, 8, f"Chart {i+1}", ln=True)
-                            pdf.image(img_path, w=170)
-                            pdf.ln(10)
-                            os.remove(img_path)
+                                    img_path = tmp.name
+                                    pdf.set_font("DejaVu", "B", 12)
+                                    pdf.cell(0, 8, f"Chart {i+1}", ln=True)
+                                    pdf.image(img_path, w=170)
+                                    pdf.ln(10)
+                                    os.remove(img_path)
+                                except Exception as export_err:
+                                    pdf.multi_cell(0, 7, f"Chart {i+1} skipped: {export_err}")
+                                    pdf.ln(5)
                         except Exception as e:
                             pdf.multi_cell(0, 7, f"Chart {i+1} error: {e}")
                             pdf.ln(5)
 
+                    # Regression Plot export
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
@@ -219,18 +220,14 @@ if data is not None:
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                             try:
                                 reg_fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
-                            except Exception:
-                                try:
-                                    reg_fig.write_html(tmp.name + ".html")
-                                    reg_fig.write_image(tmp.name, format='png', engine='orca')
-                                except Exception as alt_e:
-                                    pdf.multi_cell(0, 7, f"Regression skipped (export error: {alt_e})")
-                                    continue
-                            reg_img = tmp.name
-                        pdf.set_font("DejaVu", "B", 16)
-                        pdf.cell(0, 10, "Regression Analysis", ln=True)
-                        pdf.image(reg_img, w=170)
-                        os.remove(reg_img)
+                                reg_img = tmp.name
+                                pdf.set_font("DejaVu", "B", 16)
+                                pdf.cell(0, 10, "Regression Analysis", ln=True)
+                                pdf.image(reg_img, w=170)
+                                os.remove(reg_img)
+                            except Exception as export_err:
+                                pdf.multi_cell(0, 7, f"Regression skipped: {export_err}")
+                                pdf.ln(5)
                     except Exception as e:
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
 
