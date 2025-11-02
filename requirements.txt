@@ -8,3 +8,5 @@ matplotlib
 google-generativeai
 fpdf
 kaleido
+plotly-orca
+statsmodels
