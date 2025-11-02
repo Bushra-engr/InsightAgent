@@ -13,7 +13,8 @@ import importlib.util
 from smart_summary import get_Summary
 from prompt import full_prompt
 
-os.environ["KALIEDO_CHROME_PATH"] = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+# ✅ Fix: correct environment variable name for Kaleido
+os.environ["Kaleido_Chrome_Path"] = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 
 #  PAGE SETUP & STYLE
@@ -166,7 +167,6 @@ if data is not None:
                 pdf.set_margins(15, 15, 15)
                 pdf.add_page()
 
-                # Font paths
                 # Font path setup (safe method)
                 base_path = os.path.join(os.getcwd(), "dejavu-fonts-ttf-2.37", "ttf")
                 font_path_regular = os.path.join(base_path, "DejaVuSans.ttf")
@@ -174,7 +174,7 @@ if data is not None:
 
                 st.write(f"🔍 Checking font paths:\nRegular: {font_path_regular}\nBold: {font_path_bold}")
 
-# Check existence
+                # Check existence
                 if not (os.path.exists(font_path_regular) and os.path.exists(font_path_bold)):
                     st.error("⚠️ Font files missing! Make sure both DejaVuSans.ttf and DejaVuSans-Bold.ttf exist in your ttf folder.")
                 else:
@@ -204,7 +204,7 @@ if data is not None:
                     write_section("Data Quality Issues", data_quality)
                     write_section("Recommendations", recommendations)
 
-                    # Charts
+                    # Charts (safe Kaleido handling)
                     pdf.set_font("DejaVu", "B", 16)
                     pdf.cell(0, 10, "Generated Charts", ln=True)
                     pdf.ln(5)
@@ -216,19 +216,22 @@ if data is not None:
                             fig = scope_dict["fig"]
 
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                                fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
-                                img_path = tmp.name
-
-                            pdf.set_font("DejaVu", "B", 12)
-                            pdf.cell(0, 8, f"Chart {i+1}", ln=True)
-                            pdf.image(img_path, w=170)
-                            pdf.ln(10)
-                            os.remove(img_path)
+                                try:
+                                    fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
+                                    img_path = tmp.name
+                                    pdf.set_font("DejaVu", "B", 12)
+                                    pdf.cell(0, 8, f"Chart {i+1}", ln=True)
+                                    pdf.image(img_path, w=170)
+                                    pdf.ln(10)
+                                    os.remove(img_path)
+                                except Exception as inner_e:
+                                    pdf.multi_cell(0, 7, f"Chart {i+1} skipped (export error: {inner_e})")
+                                    pdf.ln(5)
                         except Exception as e:
-                            pdf.multi_cell(0, 7, f"Chart {i+1} error: {e}")
+                            pdf.multi_cell(0, 7, f"Chart {i+1} generation error: {e}")
                             pdf.ln(5)
 
-                    # Regression Plot
+                    # Regression Plot (safe handling)
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
@@ -242,32 +245,32 @@ if data is not None:
                             reg_fig.update_traces(marker=dict(color='blue'))
 
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                            reg_fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
-                            reg_img = tmp.name
-
-                        pdf.set_font("DejaVu", "B", 16)
-                        pdf.cell(0, 10, "Regression Analysis", ln=True)
-                        pdf.image(reg_img, w=170)
-                        os.remove(reg_img)
+                            try:
+                                reg_fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
+                                reg_img = tmp.name
+                                pdf.set_font("DejaVu", "B", 16)
+                                pdf.cell(0, 10, "Regression Analysis", ln=True)
+                                pdf.image(reg_img, w=170)
+                                os.remove(reg_img)
+                            except Exception as inner_e:
+                                pdf.multi_cell(0, 7, f"Regression plot skipped (export error: {inner_e})")
                     except Exception as e:
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
 
                     # Export PDF safely
-                  # Export PDF safely
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
                         pdf.output(tmp_pdf.name)
                         tmp_pdf_path = tmp_pdf.name
 
                     with open(tmp_pdf_path, "rb") as f:
                         pdf_output = f.read()
-
                         st.download_button(
                             label="📄 Download Full Report as PDF",
                             data=pdf_output,
                             file_name="InsightAgent_Report.pdf",
-                            mime="application/pdf")
+                            mime="application/pdf"
+                        )
                         os.remove(tmp_pdf_path)
-
 
             except Exception as e:
                 st.error(f"PDF generation error: {e}")
