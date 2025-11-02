@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np 
 import matplotlib.pyplot as plt 
 import io
-import sheryanalysis as sh
 
 def get_Summary(df:pd.DataFrame)->str:
     buffer=io.StringIO()

@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import google.generativeai as genai
-from sklearn.linear_model import LinearRegression
 import json
 import gtts
 from fpdf import FPDF
@@ -226,7 +225,15 @@ if data is not None:
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
-                        reg_fig = px.scatter(df, x=feature_col, y=target_col, trendline='ols', trendline_color_override='red')
+
+                        has_statsmodels = importlib.util.find_spec("statsmodels") is not None
+                        if has_statsmodels:
+                            reg_fig = px.scatter(df, x=feature_col, y=target_col,
+                                                 trendline='ols', trendline_color_override='red')
+                        else:
+                            reg_fig = px.scatter(df, x=feature_col, y=target_col)
+                            reg_fig.update_traces(marker=dict(color='blue'))
+
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                             reg_fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
                             reg_img = tmp.name
