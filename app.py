@@ -8,8 +8,7 @@ from fpdf import FPDF
 import tempfile
 import os
 import importlib.util
-import matplotlib.pyplot as plt
-import plotly.express as px
+import matplotlib.pyplot as plt  # added for matplotlib fallback
 
 # Custom modules
 from smart_summary import get_Summary
@@ -140,6 +139,7 @@ if data is not None:
                     target_col = reg['target_variable']
                     feature_col = reg['feature_variable']
 
+                    # Safe regression (no crash if statsmodels not installed)
                     has_statsmodels = importlib.util.find_spec("statsmodels") is not None
                     if has_statsmodels:
                         reg_fig = px.scatter(df, x=feature_col, y=target_col,
@@ -163,7 +163,7 @@ if data is not None:
                 pdf.set_margins(15, 15, 15)
                 pdf.add_page()
 
-                # Font path setup (safe method)
+                # Font paths
                 base_path = os.path.join(os.getcwd(), "dejavu-fonts-ttf-2.37", "ttf")
                 font_path_regular = os.path.join(base_path, "DejaVuSans.ttf")
                 font_path_bold = os.path.join(base_path, "DejaVuSans-Bold.ttf")
@@ -197,43 +197,56 @@ if data is not None:
                     write_section("Data Quality Issues", data_quality)
                     write_section("Recommendations", recommendations)
 
-                    # Charts using matplotlib
+                    # Charts using matplotlib or Plotly-note fallback
                     pdf.set_font("DejaVu", "B", 16)
                     pdf.cell(0, 10, "Generated Charts", ln=True)
                     pdf.ln(5)
 
                     for i, code in enumerate(chart_codes):
                         try:
-                            scope_dict = {"df": df, "plt": plt}
+                            scope_dict = {"df": df, "px": px, "plt": plt}
                             exec(code, scope_dict)
+
+                            # If user code created a Plotly figure named 'fig'
+                            if "fig" in scope_dict:
+                                pdf.multi_cell(0, 7, f"Chart {i+1}: See interactive chart in app (Plotly)")
+                                pdf.ln(5)
+                                try:
+                                    plt.clf()
+                                except Exception:
+                                    pass
+                                continue
+
+                            # Otherwise assume matplotlib
                             fig = plt.gcf()
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                                fig.savefig(tmp.name, bbox_inches='tight')
-                                pdf.image(tmp.name, w=170)
-                                os.remove(tmp.name)
-                            plt.close(fig)
-                            pdf.ln(10)
+                            if fig and fig.axes:
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                                    fig.savefig(tmp.name, bbox_inches='tight')
+                                    pdf.image(tmp.name, w=170)
+                                    os.remove(tmp.name)
+                                plt.close(fig)
+                                pdf.ln(10)
+                            else:
+                                pdf.multi_cell(0, 7, f"Chart {i+1}: No chart produced by code.")
+                                pdf.ln(5)
+
                         except Exception as e:
                             pdf.multi_cell(0, 7, f"Chart {i+1} error: {e}")
                             pdf.ln(5)
 
-                    # Regression using matplotlib
+                    # Regression Plot
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
 
-                        plt.figure(figsize=(5, 4))
-                        plt.scatter(df[feature_col], df[target_col], color='blue')
-                        plt.xlabel(feature_col)
-                        plt.ylabel(target_col)
-                        plt.title("Regression Plot")
-
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                            plt.savefig(tmp.name, bbox_inches='tight')
-                            pdf.cell(0, 10, "Regression Analysis", ln=True)
-                            pdf.image(tmp.name, w=170)
-                            os.remove(tmp.name)
-                        plt.close()
+                        has_statsmodels = importlib.util.find_spec("statsmodels") is not None
+                        if has_statsmodels:
+                            reg_fig = px.scatter(df, x=feature_col, y=target_col,
+                                                 trendline='ols', trendline_color_override='red')
+                            pdf.multi_cell(0, 7, "Regression plot: See interactive version in app.")
+                        else:
+                            reg_fig = px.scatter(df, x=feature_col, y=target_col)
+                            pdf.multi_cell(0, 7, "Regression plot: See interactive version in app.")
                     except Exception as e:
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
 
@@ -245,13 +258,12 @@ if data is not None:
                     with open(tmp_pdf_path, "rb") as f:
                         pdf_output = f.read()
 
-                    st.download_button(
-                        label="📄 Download Full Report as PDF",
-                        data=pdf_output,
-                        file_name="InsightAgent_Report.pdf",
-                        mime="application/pdf"
-                    )
-                    os.remove(tmp_pdf_path)
+                        st.download_button(
+                            label="📄 Download Full Report as PDF",
+                            data=pdf_output,
+                            file_name="InsightAgent_Report.pdf",
+                            mime="application/pdf")
+                        os.remove(tmp_pdf_path)
 
             except Exception as e:
                 st.error(f"PDF generation error: {e}")
