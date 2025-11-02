@@ -29,7 +29,7 @@ Interactive "Deep-Dive": The AI suggests a filter (e.g., "Analyze the 'North' re
 Downloadable PDF: Get a clean, text-based PDF of the full report with one click.
 
 💡 How the Magic Works
-This is the cool part. We don't send your 2,000-row file to the AI (that would be slow and expensive!).
+This is the cool part. We don't send your 4,000-row file to the AI (that would be slow and expensive!).
 
 Pandas "Smart Summary": The app first creates a "fingerprint" of your data using Pandas (.describe(), .info(), .corr(), etc.).
 
