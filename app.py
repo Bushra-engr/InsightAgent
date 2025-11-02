@@ -10,65 +10,46 @@ import os
 import importlib.util
 import matplotlib.pyplot as plt
 import numpy as np
-
-# Custom modules
 from smart_summary import get_Summary
 from prompt import full_prompt
 
-
-#  PAGE SETUP & STYLE
-
+# Page setup
 st.set_page_config(page_title="Insight Agent", page_icon="🤖", layout="wide")
 
+# Basic CSS styling
 st.markdown("""
 <style>
-:root {
-    --primary-color: #264653;
-    --secondary-color: #2a9d8f;
-    --background-light: #f1f5f2;
-    --panel-color: #d9e4dd;
-    --text-dark: #0b0c0c;
-    --header-color: #1b263b;
-}
-.stApp { background-color: var(--background-light); }
-h1 { color: var(--header-color); text-align: center; font-weight: 800; }
+.stApp { background-color: #f1f5f2; }
+h1 { color: #1b263b; text-align: center; font-weight: 800; }
 div[data-testid="stFileUploader"] {
-    background-color: var(--panel-color);
-    border: 2px dashed var(--secondary-color);
+    background-color: #d9e4dd;
+    border: 2px dashed #2a9d8f;
     padding: 1em;
     border-radius: 10px;
 }
 div.stButton > button:first-child {
-    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-    color: white; font-weight: 600; border-radius: 8px; transition: 0.3s;
+    background: linear-gradient(90deg, #264653, #2a9d8f);
+    color: white; font-weight: 600; border-radius: 8px;
 }
 div.stButton > button:first-child:hover {
-    background: linear-gradient(90deg, var(--secondary-color), var(--primary-color));
-    transform: scale(1.03);
+    background: linear-gradient(90deg, #2a9d8f, #264653);
 }
 </style>
 """, unsafe_allow_html=True)
 
-
-#  API CONFIG
-
+# API config
 API_KEY = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("models/gemini-2.5-pro")
 
-
-#  APP HEADER
-
+# App header
 st.title("INSIGHT AGENT 🤖📊")
 st.header("Turn your Data into a Story")
 
-
-#  DATA UPLOAD
-
+# File upload
 data = st.file_uploader("Upload your dataset (Max 4000 rows)", type=["csv", "xls", "xlsx"])
 
 if data is not None:
-    # Read file
     if data.name.endswith(".csv"):
         df = pd.read_csv(data)
     else:
@@ -81,7 +62,7 @@ if data is not None:
         # Smart Summary
         smart_summary = get_Summary(df)
 
-        # Role and Tone
+        # Role & Tone
         role = st.pills("Select your Role", ["CEO", "Investor", "Sales Manager", "Employee", "Teacher", "Student", "Patient", "Doctor"])
         tone = st.pills("Select your Tone", ["Formal", "Casual", "Conversational", "Friendly", "Professional"])
 
@@ -102,7 +83,7 @@ if data is not None:
                 chart_codes = agent_report["plot_codes"]
                 reg = agent_report["regression_suggestion"]
 
-            #  TABS VIEW
+            # Tabs
             tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
                 ["Smart Summary", "Key Insights", "Data Quality", "Recommendations", "Charts", "Regression"]
             )
@@ -125,6 +106,7 @@ if data is not None:
                 for text in recommendations:
                     st.write(text)
 
+            # Interactive charts
             with tab5:
                 try:
                     scope_dict = {"df": df, "px": px}
@@ -135,6 +117,7 @@ if data is not None:
                 except Exception as e:
                     st.error(f"Error in chart generation: {e}")
 
+            # Regression plot
             with tab6:
                 try:
                     target_col = reg['target_variable']
@@ -151,25 +134,24 @@ if data is not None:
                             text="OLS disabled (statsmodels missing)",
                             xref="paper", yref="paper", showarrow=False, yshift=20
                         )
-
                     st.plotly_chart(reg_fig, use_container_width=True)
                 except Exception as e:
                     st.error(f"Regression plot error: {e}")
 
-          # PDF GENERATE
+            # Generate PDF
             try:
                 pdf = FPDF()
                 pdf.set_auto_page_break(auto=True, margin=15)
                 pdf.set_margins(15, 15, 15)
                 pdf.add_page()
 
-                # Font paths
+                # Fonts
                 base_path = os.path.join(os.getcwd(), "dejavu-fonts-ttf-2.37", "ttf")
                 font_path_regular = os.path.join(base_path, "DejaVuSans.ttf")
                 font_path_bold = os.path.join(base_path, "DejaVuSans-Bold.ttf")
 
                 if not (os.path.exists(font_path_regular) and os.path.exists(font_path_bold)):
-                    st.error("⚠️ Font files missing! Make sure both DejaVuSans.ttf and DejaVuSans-Bold.ttf exist in your ttf folder.")
+                    st.error("⚠️ Font files missing!")
                 else:
                     pdf.add_font("DejaVu", "", font_path_regular, uni=True)
                     pdf.add_font("DejaVu", "B", font_path_bold, uni=True)
@@ -177,7 +159,7 @@ if data is not None:
                     pdf.cell(0, 10, "InsightAgent AI Report", ln=True, align='C')
                     pdf.ln(10)
 
-                    # Helper to write sections
+                    # Write section function
                     def write_section(title, content):
                         pdf.set_font("DejaVu", "B", 16)
                         pdf.cell(0, 10, title, ln=True)
@@ -191,31 +173,25 @@ if data is not None:
                                 pdf.ln(1)
                         pdf.ln(6)
 
-                    # Sections
+                    # Report sections
                     write_section("Executive Summary", executive_summary)
                     write_section("Key Insights", key_insights)
                     write_section("Data Quality Issues", data_quality)
                     write_section("Recommendations", recommendations)
 
-                    # Charts Section (convert Plotly to Matplotlib for PDF)
+                    # Charts in PDF (Static)
                     pdf.set_font("DejaVu", "B", 16)
                     pdf.cell(0, 10, "Generated Charts", ln=True)
                     pdf.ln(5)
 
                     for i, code in enumerate(chart_codes):
                         try:
-                            # Detect if Plotly code and convert
                             if "px." in code:
-                                if "bar" in code:
-                                    chart_type = "bar"
-                                elif "line" in code:
-                                    chart_type = "line"
-                                elif "scatter" in code:
-                                    chart_type = "scatter"
-                                elif "pie" in code:
-                                    chart_type = "pie"
-                                else:
-                                    chart_type = "bar"
+                                chart_type = None
+                                for c in ["bar", "line", "scatter", "pie", "histogram", "box", "heatmap", "area", "violin"]:
+                                    if f"px.{c}" in code:
+                                        chart_type = c
+                                        break
 
                                 x_col, y_col = None, None
                                 if "x=" in code:
@@ -224,22 +200,47 @@ if data is not None:
                                     y_col = code.split("y=")[1].split(",")[0].replace('"', '').replace("'", "").strip()
 
                                 fig, ax = plt.subplots(figsize=(6, 4))
+                                ax.set_facecolor("#f8f9fa")
+
+                                # Static chart rendering
                                 if chart_type == "bar" and x_col and y_col:
                                     ax.bar(df[x_col], df[y_col], color="#2a9d8f")
                                 elif chart_type == "line" and x_col and y_col:
                                     ax.plot(df[x_col], df[y_col], color="#264653", linewidth=2)
                                 elif chart_type == "scatter" and x_col and y_col:
-                                    ax.scatter(df[x_col], df[y_col], color="#e76f51")
+                                    ax.scatter(df[x_col], df[y_col], color="#e76f51", s=50, alpha=0.8)
                                 elif chart_type == "pie" and y_col:
                                     vals = df[y_col].value_counts()
                                     ax.pie(vals, labels=vals.index, autopct='%1.1f%%')
+                                elif chart_type == "histogram" and x_col:
+                                    ax.hist(df[x_col], bins=15, color="#2a9d8f", edgecolor="white")
+                                elif chart_type == "box" and y_col:
+                                    ax.boxplot(df[y_col].dropna())
+                                    ax.set_xticklabels([y_col])
+                                elif chart_type == "heatmap":
+                                    if df.select_dtypes(include='number').shape[1] >= 2:
+                                        corr = df.corr(numeric_only=True)
+                                        im = ax.imshow(corr, cmap='coolwarm')
+                                        ax.set_xticks(range(len(corr.columns)))
+                                        ax.set_xticklabels(corr.columns, rotation=45, ha='right')
+                                        ax.set_yticks(range(len(corr.columns)))
+                                        ax.set_yticklabels(corr.columns)
+                                        fig.colorbar(im, ax=ax)
+                                    else:
+                                        ax.text(0.5, 0.5, "Not enough numeric columns", ha='center', va='center')
+                                elif chart_type == "area" and x_col and y_col:
+                                    ax.fill_between(df[x_col], df[y_col], color="#2a9d8f", alpha=0.5)
+                                elif chart_type == "violin" and y_col:
+                                    ax.violinplot(df[y_col].dropna(), showmeans=True)
+                                    ax.set_xticks([1])
+                                    ax.set_xticklabels([y_col])
                                 else:
-                                    ax.text(0.5, 0.5, "Unsupported Plotly chart", ha='center', va='center', fontsize=12)
-                                ax.set_title(f"Chart {i+1}: Auto-converted from Plotly")
+                                    ax.text(0.5, 0.5, "Unsupported Plotly chart", ha='center', va='center')
+
+                                ax.set_title(f"Chart {i+1}")
                                 plt.xticks(rotation=30, ha='right')
 
                             else:
-                                # Already Matplotlib chart
                                 fig, ax = plt.subplots(figsize=(6, 4))
                                 scope_dict = {"df": df, "plt": plt, "ax": ax}
                                 exec(code, scope_dict)
@@ -250,64 +251,48 @@ if data is not None:
                                 os.remove(tmp.name)
                             plt.close(fig)
                             pdf.ln(10)
-
                         except Exception as e:
-                            pdf.set_font("DejaVu", "", 12)
                             pdf.multi_cell(0, 7, f"Chart {i+1} error: {e}")
                             pdf.ln(5)
 
-                    # Regression Plot (Matplotlib only)
+                    # Regression in PDF
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
-
                         fig, ax = plt.subplots(figsize=(6, 4))
                         ax.scatter(df[feature_col], df[target_col], color='#2a9d8f', label='Data Points')
 
                         if df[feature_col].dtype != 'object' and df[target_col].dtype != 'object':
-                            try:
-                                m, b = np.polyfit(df[feature_col], df[target_col], 1)
-                                ax.plot(df[feature_col], m * df[feature_col] + b, color='#e76f51', label='Trendline')
-                            except Exception:
-                                pass
+                            m, b = np.polyfit(df[feature_col], df[target_col], 1)
+                            ax.plot(df[feature_col], m * df[feature_col] + b, color='#e76f51', label='Trendline')
 
                         ax.set_title(f"Regression: {feature_col} vs {target_col}")
-                        ax.set_xlabel(feature_col)
-                        ax.set_ylabel(target_col)
                         ax.legend()
-
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                             fig.savefig(tmp.name, bbox_inches='tight')
                             pdf.image(tmp.name, w=170)
                             os.remove(tmp.name)
-
                         plt.close(fig)
                         pdf.ln(10)
-
                     except Exception as e:
-                        pdf.set_font("DejaVu", "", 12)
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
-                        pdf.ln(5)
 
-                    # Export PDF safely
+                    # Download PDF
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
                         pdf.output(tmp_pdf.name)
                         tmp_pdf_path = tmp_pdf.name
-
                     with open(tmp_pdf_path, "rb") as f:
                         pdf_output = f.read()
-
                         st.download_button(
                             label="📄 Download Full Report as PDF",
                             data=pdf_output,
                             file_name="InsightAgent_Report.pdf",
-                            mime="application/pdf")
+                            mime="application/pdf"
+                        )
                         os.remove(tmp_pdf_path)
-
             except Exception as e:
                 st.error(f"PDF generation error: {e}")
-
     else:
-        st.error("🚨 Error: File has more than 4000 rows!")
+        st.error("🚨 File has more than 4000 rows!")
 else:
-    st.write("📁 No file selected yet.")
+    st.write("📁 Upload a dataset to begin.")
