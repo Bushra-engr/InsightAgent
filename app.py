@@ -165,10 +165,15 @@ if data is not None:
                 pdf.add_page()
 
                 # Font paths
-                font_path_regular = r"C:\Users\3PIN\OneDrive\Python with AIML\Insight_Agent_DataExpert\dejavu-fonts-ttf-2.37\ttf\DejaVuSans.ttf"
-                font_path_bold = r"C:\Users\3PIN\OneDrive\Python with AIML\Insight_Agent_DataExpert\dejavu-fonts-ttf-2.37\ttf\DejaVuSans-Bold.ttf"
+                # Font path setup (safe method)
+                base_path = os.path.join(os.getcwd(), "dejavu-fonts-ttf-2.37", "ttf")
+                font_path_regular = os.path.join(base_path, "DejaVuSans.ttf")
+                font_path_bold = os.path.join(base_path, "DejaVuSans-Bold.ttf")
 
-                if not os.path.exists(font_path_regular) or not os.path.exists(font_path_bold):
+                st.write(f"🔍 Checking font paths:\nRegular: {font_path_regular}\nBold: {font_path_bold}")
+
+# Check existence
+                if not (os.path.exists(font_path_regular) and os.path.exists(font_path_bold)):
                     st.error("⚠️ Font files missing! Make sure both DejaVuSans.ttf and DejaVuSans-Bold.ttf exist in your ttf folder.")
                 else:
                     pdf.add_font("DejaVu", "", font_path_regular, uni=True)
