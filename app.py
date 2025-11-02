@@ -8,13 +8,15 @@ from fpdf import FPDF
 import tempfile
 import os
 import importlib.util
+from plotly.io import write_html
+import io
 
 # Custom modules
 from smart_summary import get_Summary
 from prompt import full_prompt
 
 
-# PAGE SETUP & STYLE
+#  PAGE SETUP & STYLE
 st.set_page_config(page_title="Insight Agent", page_icon="🤖", layout="wide")
 
 st.markdown("""
@@ -47,18 +49,18 @@ div.stButton > button:first-child:hover {
 """, unsafe_allow_html=True)
 
 
-# API CONFIG
+#  API CONFIG
 API_KEY = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("models/gemini-2.5-pro")
 
 
-# APP HEADER
+#  APP HEADER
 st.title("INSIGHT AGENT 🤖📊")
 st.header("Turn your Data into a Story")
 
 
-# DATA UPLOAD
+#  DATA UPLOAD
 data = st.file_uploader("Upload your dataset (Max 4000 rows)", type=["csv", "xls", "xlsx"])
 
 if data is not None:
@@ -71,11 +73,14 @@ if data is not None:
         st.success("✅ File uploaded successfully!")
         st.dataframe(df.head(5), use_container_width=True)
 
+        # Smart Summary
         smart_summary = get_Summary(df)
 
+        # Role and Tone
         role = st.pills("Select your Role", ["CEO", "Investor", "Sales Manager", "Employee", "Teacher", "Student", "Patient", "Doctor"])
         tone = st.pills("Select your Tone", ["Formal", "Casual", "Conversational", "Friendly", "Professional"])
 
+        # Analyze button
         if st.button("📊 Analyze Your Data", use_container_width=True):
             with st.spinner("Agent is analyzing your data..."):
                 prompt = full_prompt(tone, role, smart_summary)
@@ -91,6 +96,7 @@ if data is not None:
                 chart_codes = agent_report["plot_codes"]
                 reg = agent_report["regression_suggestion"]
 
+            #  TABS VIEW
             tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
                 ["Smart Summary", "Key Insights", "Data Quality", "Recommendations", "Charts", "Regression"]
             )
@@ -114,14 +120,14 @@ if data is not None:
                     st.write(text)
 
             with tab5:
-                try:
-                    scope_dict = {"df": df, "px": px}
-                    for code in chart_codes:
+                scope_dict = {"df": df, "px": px}
+                for code in chart_codes:
+                    try:
                         exec(code, scope_dict)
                         fig = scope_dict["fig"]
                         st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    st.error(f"Error in chart generation: {e}")
+                    except Exception as e:
+                        st.error(f"Chart error: {e}")
 
             with tab6:
                 try:
@@ -129,20 +135,14 @@ if data is not None:
                     feature_col = reg['feature_variable']
                     has_statsmodels = importlib.util.find_spec("statsmodels") is not None
                     if has_statsmodels:
-                        reg_fig = px.scatter(df, x=feature_col, y=target_col,
-                                             trendline='ols', trendline_color_override='red')
+                        reg_fig = px.scatter(df, x=feature_col, y=target_col, trendline='ols', trendline_color_override='red')
                     else:
                         reg_fig = px.scatter(df, x=feature_col, y=target_col)
-                        reg_fig.update_traces(marker=dict(color='blue'))
-                        reg_fig.add_annotation(
-                            text="OLS disabled (statsmodels missing)",
-                            xref="paper", yref="paper", showarrow=False, yshift=20
-                        )
                     st.plotly_chart(reg_fig, use_container_width=True)
                 except Exception as e:
                     st.error(f"Regression plot error: {e}")
 
-            # PDF GENERATION
+          # PDF GENERATE
             try:
                 pdf = FPDF()
                 pdf.set_auto_page_break(auto=True, margin=15)
@@ -184,50 +184,25 @@ if data is not None:
                     pdf.cell(0, 10, "Generated Charts", ln=True)
                     pdf.ln(5)
 
-                    # Export all charts safely
                     for i, code in enumerate(chart_codes):
                         try:
                             scope_dict = {"df": df, "px": px}
                             exec(code, scope_dict)
                             fig = scope_dict["fig"]
+
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                                try:
-                                    fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
-                                    img_path = tmp.name
-                                    pdf.set_font("DejaVu", "B", 12)
-                                    pdf.cell(0, 8, f"Chart {i+1}", ln=True)
-                                    pdf.image(img_path, w=170)
-                                    pdf.ln(10)
-                                    os.remove(img_path)
-                                except Exception as export_err:
-                                    pdf.multi_cell(0, 7, f"Chart {i+1} skipped: {export_err}")
-                                    pdf.ln(5)
+                                html_path = tmp.name.replace(".png", ".html")
+                                write_html(fig, html_path)  # Save HTML version
+                                pdf.multi_cell(0, 7, f"Chart {i+1}: See interactive chart in app")
+                                pdf.ln(5)
                         except Exception as e:
                             pdf.multi_cell(0, 7, f"Chart {i+1} error: {e}")
-                            pdf.ln(5)
 
-                    # Regression Plot export
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
-                        has_statsmodels = importlib.util.find_spec("statsmodels") is not None
-                        if has_statsmodels:
-                            reg_fig = px.scatter(df, x=feature_col, y=target_col, trendline='ols',
-                                                 trendline_color_override='red')
-                        else:
-                            reg_fig = px.scatter(df, x=feature_col, y=target_col)
-                            reg_fig.update_traces(marker=dict(color='blue'))
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                            try:
-                                reg_fig.write_image(tmp.name, format='png', engine='kaleido', scale=2)
-                                reg_img = tmp.name
-                                pdf.set_font("DejaVu", "B", 16)
-                                pdf.cell(0, 10, "Regression Analysis", ln=True)
-                                pdf.image(reg_img, w=170)
-                                os.remove(reg_img)
-                            except Exception as export_err:
-                                pdf.multi_cell(0, 7, f"Regression skipped: {export_err}")
-                                pdf.ln(5)
+                        reg_fig = px.scatter(df, x=feature_col, y=target_col)
+                        pdf.cell(0, 10, "Regression Analysis: See in app", ln=True)
                     except Exception as e:
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
 
@@ -237,13 +212,14 @@ if data is not None:
 
                     with open(tmp_pdf_path, "rb") as f:
                         pdf_output = f.read()
-                        st.download_button(
-                            label="📄 Download Full Report as PDF",
-                            data=pdf_output,
-                            file_name="InsightAgent_Report.pdf",
-                            mime="application/pdf"
-                        )
-                        os.remove(tmp_pdf_path)
+
+                    st.download_button(
+                        label="📄 Download Full Report as PDF",
+                        data=pdf_output,
+                        file_name="InsightAgent_Report.pdf",
+                        mime="application/pdf"
+                    )
+                    os.remove(tmp_pdf_path)
 
             except Exception as e:
                 st.error(f"PDF generation error: {e}")
