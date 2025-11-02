@@ -8,8 +8,7 @@ from fpdf import FPDF
 import tempfile
 import os
 import importlib.util
-from plotly.io import write_html
-import io
+import matplotlib.pyplot as plt
 
 # Custom modules
 from smart_summary import get_Summary
@@ -17,6 +16,7 @@ from prompt import full_prompt
 
 
 #  PAGE SETUP & STYLE
+
 st.set_page_config(page_title="Insight Agent", page_icon="🤖", layout="wide")
 
 st.markdown("""
@@ -50,20 +50,24 @@ div.stButton > button:first-child:hover {
 
 
 #  API CONFIG
+
 API_KEY = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("models/gemini-2.5-pro")
 
 
 #  APP HEADER
+
 st.title("INSIGHT AGENT 🤖📊")
 st.header("Turn your Data into a Story")
 
 
 #  DATA UPLOAD
+
 data = st.file_uploader("Upload your dataset (Max 4000 rows)", type=["csv", "xls", "xlsx"])
 
 if data is not None:
+    # Read file
     if data.name.endswith(".csv"):
         df = pd.read_csv(data)
     else:
@@ -88,6 +92,7 @@ if data is not None:
                 clean_response = response.text.strip('```json\n').strip('\n```')
                 st.toast('✨ Analysis Finished!')
 
+                # Parse AI output
                 agent_report = json.loads(clean_response)
                 executive_summary = agent_report["executive_summary"]
                 key_insights = agent_report["key_insights"]
@@ -120,35 +125,44 @@ if data is not None:
                     st.write(text)
 
             with tab5:
-                scope_dict = {"df": df, "px": px}
-                for code in chart_codes:
-                    try:
+                try:
+                    scope_dict = {"df": df, "px": px}
+                    for code in chart_codes:
                         exec(code, scope_dict)
                         fig = scope_dict["fig"]
                         st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        st.error(f"Chart error: {e}")
+                except Exception as e:
+                    st.error(f"Error in chart generation: {e}")
 
             with tab6:
                 try:
                     target_col = reg['target_variable']
                     feature_col = reg['feature_variable']
+
                     has_statsmodels = importlib.util.find_spec("statsmodels") is not None
                     if has_statsmodels:
-                        reg_fig = px.scatter(df, x=feature_col, y=target_col, trendline='ols', trendline_color_override='red')
+                        reg_fig = px.scatter(df, x=feature_col, y=target_col,
+                                             trendline='ols', trendline_color_override='red')
                     else:
                         reg_fig = px.scatter(df, x=feature_col, y=target_col)
+                        reg_fig.update_traces(marker=dict(color='blue'))
+                        reg_fig.add_annotation(
+                            text="OLS disabled (statsmodels missing)",
+                            xref="paper", yref="paper", showarrow=False, yshift=20
+                        )
+
                     st.plotly_chart(reg_fig, use_container_width=True)
                 except Exception as e:
                     st.error(f"Regression plot error: {e}")
 
-          # PDF GENERATE
+          #PDF GENERATE
             try:
                 pdf = FPDF()
                 pdf.set_auto_page_break(auto=True, margin=15)
                 pdf.set_margins(15, 15, 15)
                 pdf.add_page()
 
+                # Font path setup (safe method)
                 base_path = os.path.join(os.getcwd(), "dejavu-fonts-ttf-2.37", "ttf")
                 font_path_regular = os.path.join(base_path, "DejaVuSans.ttf")
                 font_path_bold = os.path.join(base_path, "DejaVuSans-Bold.ttf")
@@ -162,6 +176,7 @@ if data is not None:
                     pdf.cell(0, 10, "InsightAgent AI Report", ln=True, align='C')
                     pdf.ln(10)
 
+                    # Helper to write sections
                     def write_section(title, content):
                         pdf.set_font("DejaVu", "B", 16)
                         pdf.cell(0, 10, title, ln=True)
@@ -175,37 +190,53 @@ if data is not None:
                                 pdf.ln(1)
                         pdf.ln(6)
 
+                    # Sections
                     write_section("Executive Summary", executive_summary)
                     write_section("Key Insights", key_insights)
                     write_section("Data Quality Issues", data_quality)
                     write_section("Recommendations", recommendations)
 
+                    # Charts using matplotlib
                     pdf.set_font("DejaVu", "B", 16)
                     pdf.cell(0, 10, "Generated Charts", ln=True)
                     pdf.ln(5)
 
                     for i, code in enumerate(chart_codes):
                         try:
-                            scope_dict = {"df": df, "px": px}
+                            scope_dict = {"df": df, "plt": plt}
                             exec(code, scope_dict)
-                            fig = scope_dict["fig"]
-
+                            fig = plt.gcf()
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                                html_path = tmp.name.replace(".png", ".html")
-                                write_html(fig, html_path)  # Save HTML version
-                                pdf.multi_cell(0, 7, f"Chart {i+1}: See interactive chart in app")
-                                pdf.ln(5)
+                                fig.savefig(tmp.name, bbox_inches='tight')
+                                pdf.image(tmp.name, w=170)
+                                os.remove(tmp.name)
+                            plt.close(fig)
+                            pdf.ln(10)
                         except Exception as e:
                             pdf.multi_cell(0, 7, f"Chart {i+1} error: {e}")
+                            pdf.ln(5)
 
+                    # Regression using matplotlib
                     try:
                         target_col = reg['target_variable']
                         feature_col = reg['feature_variable']
-                        reg_fig = px.scatter(df, x=feature_col, y=target_col)
-                        pdf.cell(0, 10, "Regression Analysis: See in app", ln=True)
+
+                        plt.figure(figsize=(5, 4))
+                        plt.scatter(df[feature_col], df[target_col], color='blue')
+                        plt.xlabel(feature_col)
+                        plt.ylabel(target_col)
+                        plt.title("Regression Plot")
+
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                            plt.savefig(tmp.name, bbox_inches='tight')
+                            pdf.cell(0, 10, "Regression Analysis", ln=True)
+                            pdf.image(tmp.name, w=170)
+                            os.remove(tmp.name)
+                        plt.close()
                     except Exception as e:
                         pdf.multi_cell(0, 7, f"Regression plot error: {e}")
 
+                    # Export PDF safely
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
                         pdf.output(tmp_pdf.name)
                         tmp_pdf_path = tmp_pdf.name
